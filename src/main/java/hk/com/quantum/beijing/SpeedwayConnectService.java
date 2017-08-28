@@ -10,20 +10,13 @@ import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BodyHandler;
 
-import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
-
 public class SpeedwayConnectService extends AbstractVerticle {
-
-    private static final SimpleDateFormat sdf = new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss");
 
     //Logging
     private static final Logger logger = LoggerFactory.getLogger(SpeedwayConnectService.class.getName());
 
     @Override
     public void start() throws Exception {
-
-
 
         // API Endpoint that receives HTTP Post from Impinj Readers
         Router router = Router.router(vertx);
@@ -47,9 +40,9 @@ public class SpeedwayConnectService extends AbstractVerticle {
         String field_values = routingContext.request().getParam("field_values").replaceAll("\"", "");
 
         HttpServerResponse response = routingContext.response();
-        if (location == null) {
+        if (reader_name == null) {
             sendError(400, response);
-            logger.debug("location is null");
+            logger.debug("reader_name is null");
         } else {
             logger.debug("reader_name is " + reader_name);
             logger.debug("mac_address is " + mac_address);
@@ -104,9 +97,7 @@ public class SpeedwayConnectService extends AbstractVerticle {
             }
 
             inventoryUpdates.put("updates", updates);
-
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            logger.debug(sdf.format(timestamp) + ": \n" + inventoryUpdates.encodePrettily());
+            logger.debug(inventoryUpdates.encodePrettily());
 
             //May not need to add additional response handling since it is not targeted for end-user.
             response.setStatusCode(200).end();
@@ -115,5 +106,10 @@ public class SpeedwayConnectService extends AbstractVerticle {
 
     private void sendError(int statusCode, HttpServerResponse response) {
         response.setStatusCode(statusCode).end();
+    }
+
+    @Override
+    public void stop() {
+        vertx.close();
     }
 }
