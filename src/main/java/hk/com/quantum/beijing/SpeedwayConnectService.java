@@ -40,7 +40,12 @@ public class SpeedwayConnectService extends AbstractVerticle {
         String field_values = routingContext.request().getParam("field_values").replaceAll("\"", "");
 
         HttpServerResponse response = routingContext.response();
-        if (reader_name == null) {
+        if (reader_name == null ||
+            mac_address == null ||
+            line_ending == null ||
+            field_delim == null ||
+            field_names == null ||
+            field_values == null) {
             sendError(400, response);
             logger.debug("reader_name is null");
         } else {
