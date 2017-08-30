@@ -23,9 +23,6 @@ public class SpeedwayConnectService extends AbstractVerticle {
         router.route().handler(BodyHandler.create());
         router.post("/api/v1/reader/SpeedwayConnect/:location").handler(this::handlePost);
         vertx.createHttpServer().requestHandler(router::accept).listen(config().getInteger("http.port", 8083));
-
-        // Sends the inventory updates on the event bus.
-        //vertx.eventBus().publish("InventoryUpdates", toJson());
     }
 
     private void handlePost(RoutingContext routingContext) {
@@ -103,6 +100,9 @@ public class SpeedwayConnectService extends AbstractVerticle {
 
             inventoryUpdates.put("updates", updates);
             logger.debug(inventoryUpdates.encodePrettily());
+
+            // Sends the inventory updates on the event bus.
+            vertx.eventBus().publish("eb", inventoryUpdates);
 
             //May not need to add additional response handling since it is not targeted for end-user.
             response.setStatusCode(200).end();

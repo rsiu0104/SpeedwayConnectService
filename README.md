@@ -14,10 +14,10 @@ mvn clean package
 ## Run
 
 ```
-java -jar target\SpeedwayConnectService-1.0-SNAPSHOT.original.jar
+java -jar target\SpeedwayConnectService-1.0-SNAPSHOT.original.jar --cluster -Djava.net.preferIPv4Stack=true
 ```
 ## Run with Debug
 
 ```
-java -Djava.util.logging.config.file=src\conf\logging.properties -jar target\SpeedwayConnectService-1.0-SNAPSHOT.original.jar
+java -Djava.util.logging.config.file=src\conf\logging.properties -jar target\SpeedwayConnectService-1.0-SNAPSHOT.original.jar --cluster -Djava.net.preferIPv4Stack=true
 ```
