@@ -103,6 +103,7 @@ public class SpeedwayConnectService extends AbstractVerticle {
 
             // Sends the inventory updates on the event bus.
             vertx.eventBus().publish("eb", inventoryUpdates);
+            logger.info("Eventbus: Sent " + inventoryUpdates.getJsonArray("updates").size() + " record(s)");
 
             //May not need to add additional response handling since it is not targeted for end-user.
             response.setStatusCode(200).end();
