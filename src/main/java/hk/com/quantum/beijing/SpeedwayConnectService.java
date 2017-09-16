@@ -9,6 +9,7 @@ import io.vertx.core.logging.LoggerFactory;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BodyHandler;
+import java.util.HashMap;
 
 public class SpeedwayConnectService extends AbstractVerticle {
 
@@ -63,7 +64,7 @@ public class SpeedwayConnectService extends AbstractVerticle {
                    "location" : "DC1",
                    "reader_name" : "709DemoExit1",
                    "mac_address" : "00:16:25:11:CB:03",
-                   "updates" : [ {
+                   "inventoryUpdateArray" : [ {
                      "antenna_port" : "3",
                      "epc" : "2016090208473A0110500091",
                      "first_seen_timestamp" : "1503632155035362",
@@ -84,26 +85,48 @@ public class SpeedwayConnectService extends AbstractVerticle {
 
             String[] fnames = field_names.split(",");
             String[] lines = field_values.split(line_ending);
+            int numLine = 0;
 
-            JsonArray updates = new JsonArray();
+            JsonArray inventoryUpdateArray = new JsonArray();
+
+            // Hash Inventory inventoryUpdateArray and keeping the earliest copy.
+            HashMap <String, JsonObject> inventoryUpdateMap = new HashMap<String, JsonObject>();
 
             for (String line: lines) {
                 String[] fvalues = line.split(field_delim);
-                JsonObject inventoryUpdate = new JsonObject();
 
+                JsonObject inventoryUpdate = new JsonObject();
                 for (int i=0; i < fnames.length; i++) {
                     inventoryUpdate.put(fnames[i], fvalues[i]);
                 }
 
-                updates.add(inventoryUpdate);
+                String thisEPC = inventoryUpdate.getString("epc");
+                //Is this EPC new?
+                if(!inventoryUpdateMap.containsKey(thisEPC)) {
+                    inventoryUpdateMap.put(thisEPC, inventoryUpdate);
+                    inventoryUpdateArray.add(inventoryUpdate);
+                }
+
+                numLine++;
             }
 
-            inventoryUpdates.put("updates", updates);
+            logger.info("HTTP Post: Received " + numLine + " record(s)");
+
+            // Once going through all the updates, put the update JsonArray into the update JsonObject for Eventbus.
+            inventoryUpdates.put("updates", inventoryUpdateArray);
+
             logger.debug(inventoryUpdates.encodePrettily());
 
-            // Sends the inventory updates on the event bus.
-            vertx.eventBus().publish("eb", inventoryUpdates);
-            logger.info("Eventbus: Sent " + inventoryUpdates.getJsonArray("updates").size() + " record(s)");
+            // Sends the inventory inventoryUpdateArray on the event bus.
+            vertx.eventBus().send("eb", inventoryUpdates, ar -> {
+                if (ar.succeeded()) {
+                    logger.info("Eventbus: Sent " + inventoryUpdates.getJsonArray("updates").size() + " record(s)");
+                    logger.info("Received reply: " + ar.result().body());
+                } else {
+                    logger.error("Unable to send to Eventbus: " + ar.cause().getMessage());
+                }
+            });
+
 
             //May not need to add additional response handling since it is not targeted for end-user.
             response.setStatusCode(200).end();
