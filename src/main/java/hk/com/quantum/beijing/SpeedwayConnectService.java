@@ -187,6 +187,7 @@ public class SpeedwayConnectService extends AbstractVerticle {
             inventoryUpdates.put("reader_name", reader_name);
             inventoryUpdates.put("session_timestamp", session_timestamp);
             inventoryUpdates.put("reader_type", "MOBILE");
+            inventoryUpdates.put("user_name", user_name);
             inventoryUpdates.put("updates", inventoryUpdateArray);
 
             logger.debug(inventoryUpdates.encodePrettily());
