@@ -22,11 +22,12 @@ public class SpeedwayConnectService extends AbstractVerticle {
         // API Endpoint that receives HTTP Post from Impinj Readers
         Router router = Router.router(vertx);
         router.route().handler(BodyHandler.create());
-        router.post("/api/v1/reader/SpeedwayConnect/:location").handler(this::handlePost);
+        router.post("/api/v1/reader/SpeedwayConnect/:location").handler(this::SWCHandler);
+        router.put("/api/v1/reader/TSL/:location").handler(this::TSLHandler);
         vertx.createHttpServer().requestHandler(router::accept).listen(config().getInteger("http.port", 8083));
     }
 
-    private void handlePost(RoutingContext routingContext) {
+    private void SWCHandler(RoutingContext routingContext) {
 
         // Get HTTP Post Request parameters and strip away "\"".
         String location     = routingContext.request().getParam("location").replaceAll("\"", "");
@@ -39,11 +40,11 @@ public class SpeedwayConnectService extends AbstractVerticle {
 
         HttpServerResponse response = routingContext.response();
         if (reader_name == null ||
-            mac_address == null ||
-            line_ending == null ||
-            field_delim == null ||
-            field_names == null ||
-            field_values == null) {
+                mac_address == null ||
+                line_ending == null ||
+                field_delim == null ||
+                field_names == null ||
+                field_values == null) {
             sendError(400, response);
             logger.debug("reader_name is null");
         } else {
@@ -82,6 +83,7 @@ public class SpeedwayConnectService extends AbstractVerticle {
             inventoryUpdates.put("location", location);
             inventoryUpdates.put("reader_name", reader_name);
             inventoryUpdates.put("mac_address", mac_address);
+            inventoryUpdates.put("reader_type", "FIXED");
 
             String[] fnames = field_names.split(",");
             String[] lines = field_values.split(line_ending);
@@ -130,6 +132,87 @@ public class SpeedwayConnectService extends AbstractVerticle {
 
             //May not need to add additional response handling since it is not targeted for end-user.
             response.setStatusCode(200).end();
+        }
+    }
+
+    private void TSLHandler(RoutingContext routingContext) {
+
+        /*
+        HTTP Method: PUT
+        URL: http://<ip-address>:<port>/api/v1/reader/TSL/<Location>
+        BODY (application/json):
+
+        {
+            "reader_name" : "TSLDC1Reader1",
+            "user_name" : "roychow",
+            "session_timestamp" : 1506981439,
+            "session_updates" :
+                [{
+                    "EPC" : "20130422848303000102004C",
+                    "guid" : "NETWORK_EQUIPMENT_DC1_EI120816_01",
+                    "$aDetectedLocation" : "DC1_NW-G10",
+                    "LAST_INVENTORY_TAKE_TIME" : 1505981438,
+                    "type" : "NETWORK_EQUIPMENT"
+                }, {
+                    "EPC" : "2016090208473A0110500091",
+                    "guid" : "NETWORK_EQUIPMENT_DC1_DC110DC6A_22",
+                    "$aDetectedLocation" : "DC1_NW-G10",
+                    "LAST_INVENTORY_TAKE_TIME" : 1505981438,
+                    "type" : "NETWORK_EQUIPMENT"
+                }]
+        }
+        */
+
+        // Get HTTP Post Request parameters and strip away "\"".
+        String session_location = routingContext.request().getParam("location").replaceAll("\"", "");
+
+        // Get Json from Body
+        JsonObject body = new JsonObject();
+        String reader_name = null;
+        String user_name = null;
+        int session_timestamp = 0;
+        JsonArray inventoryUpdateArray = new JsonArray();
+
+        try {
+            body = routingContext.getBodyAsJson();
+            reader_name  = body.getString("reader_name").replaceAll("\"", "");
+            user_name    = body.getString("user_name").replaceAll("\"", "");
+            session_timestamp    = body.getInteger("session_timestamp");
+            inventoryUpdateArray = body.getJsonArray("session_updates");
+            logger.info("HTTP Post: Received " + inventoryUpdateArray.size() + " record(s)");
+
+            // Once going through all the updates, put the update JsonArray into the update JsonObject for Eventbus.
+            JsonObject inventoryUpdates = new JsonObject();
+            inventoryUpdates.put("location", session_location);
+            inventoryUpdates.put("reader_name", reader_name);
+            inventoryUpdates.put("session_timestamp", session_timestamp);
+            inventoryUpdates.put("reader_type", "MOBILE");
+            inventoryUpdates.put("updates", inventoryUpdateArray);
+
+            logger.debug(inventoryUpdates.encodePrettily());
+
+            // Sends the inventory inventoryUpdateArray on the event bus.
+            vertx.eventBus().send("eb", inventoryUpdates, ar -> {
+                if (ar.succeeded()) {
+                    logger.info("Eventbus: Sent " + inventoryUpdates.getJsonArray("updates").size() + " record(s)");
+                    logger.info("Received reply: " + ar.result().body());
+                } else {
+                    logger.error("Unable to send to Eventbus: " + ar.cause().getMessage());
+                }
+            });
+
+            // Response with NumOfUpdates
+            JsonObject resultJson = new JsonObject();
+            resultJson.put("NumOfUpdates", inventoryUpdateArray.size());
+
+            routingContext.response()
+                    .setStatusCode(201)
+                    .putHeader("content-type", "application/json; charset=utf-8")
+                    .end(resultJson.encodePrettily());
+
+        } catch (Exception e) {
+            logger.error("Error in HTTP Put. Exception : " + e);
+            sendError(400, routingContext.response());
         }
     }
 
