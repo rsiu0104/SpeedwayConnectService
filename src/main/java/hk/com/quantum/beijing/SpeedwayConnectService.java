@@ -207,7 +207,7 @@ public class SpeedwayConnectService extends AbstractVerticle {
             resultJson.put("NumOfUpdates", inventoryUpdateArray.size());
 
             routingContext.response()
-                    .setStatusCode(201)
+                    .setStatusCode(200)
                     .putHeader("content-type", "application/json; charset=utf-8")
                     .end(resultJson.encodePrettily());
 
