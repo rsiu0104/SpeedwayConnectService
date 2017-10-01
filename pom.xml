@@ -45,6 +45,11 @@
       <groupId>io.vertx</groupId>
       <artifactId>vertx-infinispan</artifactId>
     </dependency>
+    <dependency>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-health-check</artifactId>
+      <version>3.4.2</version>
+    </dependency>
   </dependencies>
   <build>
     <plugins>
