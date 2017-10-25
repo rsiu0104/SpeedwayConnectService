@@ -6,8 +6,6 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
-import io.vertx.ext.healthchecks.HealthCheckHandler;
-import io.vertx.ext.healthchecks.Status;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BodyHandler;
@@ -19,21 +17,14 @@ public class SpeedwayConnectService extends AbstractVerticle {
     //Logging
     private static final Logger logger = LoggerFactory.getLogger(SpeedwayConnectService.class.getName());
 
-    // HealthCheck
-    private HealthCheckHandler EBHCHandler;
-    private int AccumulatedEventOnEB = 0;
-
     @Override
     public void start() throws Exception {
-        //Setup Health Check
-        EBHCHandler = HealthCheckHandler.create(vertx);
 
         // API Endpoint that receives HTTP Post from Impinj Readers
         Router router = Router.router(vertx);
         router.route().handler(BodyHandler.create());
         router.post("/api/v1/reader/SpeedwayConnect/:location").handler(this::SWCHandler);
         router.put("/api/v1/reader/TSL/:location").handler(this::TSLHandler);
-        router.get("/api/v1/health/eventbus").handler(EBHCHandler);
         vertx.createHttpServer().requestHandler(router::accept).listen(config().getInteger("http.port", 8083));
     }
 
@@ -203,19 +194,14 @@ public class SpeedwayConnectService extends AbstractVerticle {
             logger.debug(inventoryUpdates.encodePrettily());
 
             // Sends the inventory inventoryUpdateArray on the event bus.
-            EBHCHandler.register("eventbus", future ->
-                vertx.eventBus().send("eb", inventoryUpdates, ar -> {
-                    if (ar.succeeded()) {
-                        AccumulatedEventOnEB = AccumulatedEventOnEB + ((int) ar.result().body());
-                        logger.info("Eventbus: Sent " + inventoryUpdates.getJsonArray("updates").size() + " record(s)");
-                        logger.info("Received reply: " + ar.result().body());
-                        future.complete(Status.OK(new JsonObject().put("Accumulated-Events", AccumulatedEventOnEB)));
-                    } else {
-                        logger.error("Unable to send to Eventbus: " + ar.cause().getMessage());
-                        future.complete(Status.KO());
-                    }
-                })
-            );
+            vertx.eventBus().send("eb", inventoryUpdates, ar -> {
+                if (ar.succeeded()) {
+                    logger.info("Eventbus: Sent " + inventoryUpdates.getJsonArray("updates").size() + " record(s)");
+                    logger.info("Received reply: " + ar.result().body());
+                } else {
+                    logger.error("Unable to send to Eventbus: " + ar.cause().getMessage());
+                }
+            });
 
             // Response with NumOfUpdates
             JsonObject resultJson = new JsonObject();

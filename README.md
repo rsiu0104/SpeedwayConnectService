@@ -19,5 +19,5 @@ java -jar target\SpeedwayConnectService-1.0-SNAPSHOT.original.jar --cluster -Dja
 ## Run with Debug
 
 ```
-java -Djava.util.logging.config.file=src\conf\logging.properties -jar target\SpeedwayConnectService-1.0-SNAPSHOT.original.jar --cluster -Djava.net.preferIPv4Stack=true
+java -Djava.util.logging.config.file=src\conf\logging.properties -jar target\SpeedwayConnectService-1.0-SNAPSHOT.original.jar --cluster -Djava.net.preferIPv4Stack=true -conf src\conf\config.json
 ```
