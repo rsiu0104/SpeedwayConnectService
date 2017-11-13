@@ -171,14 +171,14 @@ public class SpeedwayConnectService extends AbstractVerticle {
         JsonObject body = new JsonObject();
         String reader_name = null;
         String user_name = null;
-        int session_timestamp = 0;
+        long session_timestamp = 0;
         JsonArray inventoryUpdateArray = new JsonArray();
 
         try {
             body = routingContext.getBodyAsJson();
             reader_name  = body.getString("reader_name").replaceAll("\"", "");
             user_name    = body.getString("user_name").replaceAll("\"", "");
-            session_timestamp    = body.getInteger("session_timestamp");
+            session_timestamp    = body.getLong("session_timestamp");
             inventoryUpdateArray = body.getJsonArray("session_updates");
             logger.info("HTTP Post: Received " + inventoryUpdateArray.size() + " record(s)");
 
