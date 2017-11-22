@@ -1,6 +1,9 @@
 package hk.com.quantum.beijing;
 
+import io.netty.handler.codec.http.HttpHeaders;
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.eventbus.EventBus;
+import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -8,36 +11,90 @@ import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.handler.BodyHandler;
 
+import java.util.Base64;
 import java.util.HashMap;
 
 public class SpeedwayConnectService extends AbstractVerticle {
 
     //Logging
     private static final Logger logger = LoggerFactory.getLogger(SpeedwayConnectService.class.getName());
+    private WebClient client;
+    private String credentials;
+    private HashMap<String, String> ReaderAlarmIPHashMap;
+    private static int AlarmDurationIn100ms;
 
     @Override
     public void start() throws Exception {
+
+        AlarmDurationIn100ms = config().getInteger("alarm.durationInSec", 10) * 10;
+
+        // Initialize HTTP Client to connect to Alarm IOT Device
+//        client = vertx.createHttpClient();
+        credentials = String.format("%s:%s", config().getString("alarm.user"), config().getString("alarm.password"));
+        client = WebClient.create(vertx);
 
         // API Endpoint that receives HTTP Post from Impinj Readers
         Router router = Router.router(vertx);
         router.route().handler(BodyHandler.create());
         router.post("/api/v1/reader/SpeedwayConnect/:location").handler(this::SWCHandler);
+        router.post("/api/v1/reader/alert").handler(this::SWCAlertHandler);
         router.put("/api/v1/reader/TSL/:location").handler(this::TSLHandler);
+        router.get("/api/v1/test").handler(this::TestHandler);
         vertx.createHttpServer().requestHandler(router::accept).listen(config().getInteger("http.port", 8083));
+
+        // EventBus to get ReaderAlarmIP
+        EventBus eb = vertx.eventBus();
+        MessageConsumer<JsonArray> consumer = eb.consumer("ReaderInfo");
+        consumer.handler(message -> {
+            JsonArray body = new JsonArray(message.body().toString());
+            ReaderAlarmIPHashMap = getReaderAlarmIPHashMap(body);
+            logger.info("ReaderInfo Eventbus: Received " + ReaderAlarmIPHashMap.size() + " record(s)");
+            message.reply(ReaderAlarmIPHashMap.size());
+        });
+
+        consumer.completionHandler(res -> {
+            if (res.succeeded()) {
+                logger.info("The handler registration has reached all nodes");
+            } else {
+                logger.error("Registration failed!");
+            }
+        });
+    }
+
+    private void TestHandler(RoutingContext routingContext) {
+
+        routingContext.response()
+                .putHeader("content-type", "text/plain")
+                .end("Hello World!");
+        logger.info("Test Page Accessed.");
     }
 
     private void SWCHandler(RoutingContext routingContext) {
+        String location = "";
+        String reader_name = "";
+        String mac_address = "";
+        String line_ending = "";
+        String field_delim = "";
+        String field_names = "";
+        String field_values = "";
 
-        // Get HTTP Post Request parameters and strip away "\"".
-        String location     = routingContext.request().getParam("location").replaceAll("\"", "");
-        String reader_name  = routingContext.request().getParam("reader_name").replaceAll("\"", "");
-        String mac_address  = routingContext.request().getParam("mac_address").replaceAll("\"", "");
-        String line_ending  = routingContext.request().getParam("line_ending").replaceAll("\"", "");
-        String field_delim  = routingContext.request().getParam("field_delim").replaceAll("\"", "");
-        String field_names  = routingContext.request().getParam("field_names").replaceAll("\"", "");
-        String field_values = routingContext.request().getParam("field_values").replaceAll("\"", "");
+        try {
+            // Get HTTP Post Request parameters and strip away "\"".
+            location = routingContext.request().getParam("location").replaceAll("\"", "");
+            reader_name = routingContext.request().getParam("reader_name").replaceAll("\"", "");
+            mac_address = routingContext.request().getParam("mac_address").replaceAll("\"", "");
+            line_ending = routingContext.request().getParam("line_ending").replaceAll("\"", "");
+            field_delim = routingContext.request().getParam("field_delim").replaceAll("\"", "");
+            field_names = routingContext.request().getParam("field_names").replaceAll("\"", "");
+            field_values = routingContext.request().getParam("field_values").replaceAll("\"", "");
+        } catch (Exception e) {
+            String JsonBody = routingContext.getBodyAsString();
+            logger.error("Missing Parameter: " + e.getMessage());
+            logger.debug("Request Body: " + JsonBody);
+        }
 
         HttpServerResponse response = routingContext.response();
         if (reader_name == null ||
@@ -121,15 +178,74 @@ public class SpeedwayConnectService extends AbstractVerticle {
             logger.debug(inventoryUpdates.encodePrettily());
 
             // Sends the inventory inventoryUpdateArray on the event bus.
-            vertx.eventBus().send("eb", inventoryUpdates, ar -> {
+            vertx.eventBus().send("Inventory", inventoryUpdates, ar -> {
                 if (ar.succeeded()) {
-                    logger.info("Eventbus: Sent " + inventoryUpdates.getJsonArray("updates").size() + " record(s)");
-                    logger.info("Received reply: " + ar.result().body());
+                    logger.info("Inventory Eventbus: Sent " + inventoryUpdates.getJsonArray("updates").size() + " record(s)");
+                    logger.info("Inventory Received reply: " + ar.result().body());
                 } else {
-                    logger.error("Unable to send to Eventbus: " + ar.cause().getMessage());
+                    logger.error("Unable to send to Inventory Eventbus: " + ar.cause().getMessage());
                 }
             });
 
+
+            //May not need to add additional response handling since it is not targeted for end-user.
+            response.setStatusCode(200).end();
+        }
+    }
+
+    private void SWCAlertHandler(RoutingContext routingContext) {
+        String aLocation = "";
+        String reader = "";
+        String epc = "";
+        String name = "";
+
+        try {
+            // Get HTTP Post Request parameters and strip away "\"".
+            aLocation = routingContext.request().getParam("Assigned Location").replaceAll("\"", "");
+            reader = routingContext.request().getParam("Fixed Reader ID").replaceAll("\"", "");
+            epc = routingContext.request().getParam("EPC").replaceAll("\"", "");
+            name = routingContext.request().getParam("Name").replaceAll("\"", "");
+        } catch (Exception e) {
+            String JsonBody = routingContext.getBodyAsString("UTF-16");
+            logger.error("Missing Parameter: " + e.getMessage());
+            logger.debug("Request Body: " + JsonBody);
+        }
+
+        HttpServerResponse response = routingContext.response();
+        if (aLocation == null) {
+            sendError(400, response);
+            logger.debug("location is null");
+        } else {
+            //Trigger Alarm
+            String hostname = ReaderAlarmIPHashMap.get(reader);
+            logger.info("HTTP Post: Alert - Asset " + name +
+                    " EPC " + epc +
+                    " assigned location is " + aLocation +
+                    " detected by " + reader +
+                    " trigger alarm at " + hostname +
+                    " for " + AlarmDurationIn100ms / 10 + " sec.");
+
+//            String hostnameWithAuthen = hostname;
+//            if (!config().getString("alarm.user").isEmpty()) {
+//                hostnameWithAuthen = config().getString("alarm.user") + ":" +
+//                        config().getString("alarm.password") +
+//                        "@" + hostname;
+//            }
+//            client.getNow(config().getInteger("alarm.port", 80), hostnameWithAuthen, "/rc.cgi?o=1," + AlarmDurationIn100ms, res -> {
+////                logger.info("Turn on alarm at " + hostnameWithAuthen + " ("+ res.statusCode() + ").");
+//                logger.info("Turn on alarm ("+ res.statusCode() + ").");
+//            });
+
+            client
+                    .get(config().getInteger("alarm.port", 80), hostname, "/rc.cgi?o=1," + AlarmDurationIn100ms)
+                    .putHeader(HttpHeaders.Names.AUTHORIZATION, "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes()))
+                    .send(ar -> {
+                        if (ar.succeeded()) {
+                            logger.info("Turn on alarm with status code (" + ar.result().statusCode() + ")");
+                        } else {
+                            logger.info("Failed to trigger alarm: Status Code: " + ar.result().statusCode() + ", Msg: " + ar.cause().getMessage());
+                        }
+                    });
 
             //May not need to add additional response handling since it is not targeted for end-user.
             response.setStatusCode(200).end();
@@ -194,12 +310,12 @@ public class SpeedwayConnectService extends AbstractVerticle {
             logger.debug(inventoryUpdates.encodePrettily());
 
             // Sends the inventory inventoryUpdateArray on the event bus.
-            vertx.eventBus().send("eb", inventoryUpdates, ar -> {
+            vertx.eventBus().send("Inventory", inventoryUpdates, ar -> {
                 if (ar.succeeded()) {
-                    logger.info("Eventbus: Sent " + inventoryUpdates.getJsonArray("updates").size() + " record(s)");
-                    logger.info("Received reply: " + ar.result().body());
+                    logger.info("Inventory Eventbus: Sent " + inventoryUpdates.getJsonArray("updates").size() + " record(s)");
+                    logger.info("Inventory Received reply: " + ar.result().body());
                 } else {
-                    logger.error("Unable to send to Eventbus: " + ar.cause().getMessage());
+                    logger.error("Unable to send to Inventory Eventbus: " + ar.cause().getMessage());
                 }
             });
 
@@ -220,6 +336,20 @@ public class SpeedwayConnectService extends AbstractVerticle {
 
     private void sendError(int statusCode, HttpServerResponse response) {
         response.setStatusCode(statusCode).end();
+    }
+
+    //<Reader_Name, AlarmDevice_IP>
+    private HashMap<String, String> getReaderAlarmIPHashMap(JsonArray map) {
+        HashMap<String, String> ReaderAlarmIPHashMap = new HashMap<String, String>();
+        for (int i = 0; i < map.size(); i++) {
+            JsonObject mapItem = map.getJsonObject(i);
+            if (mapItem.containsKey("READER_NAME")) {
+                if (!mapItem.getString("READER_NAME").isEmpty()) {
+                    ReaderAlarmIPHashMap.put(mapItem.getString("READER_NAME"), mapItem.getString("ALARM_IP"));
+                }
+            }
+        }
+        return ReaderAlarmIPHashMap;
     }
 
     @Override

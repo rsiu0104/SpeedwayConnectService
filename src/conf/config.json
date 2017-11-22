@@ -1,3 +1,7 @@
 {
-  "http.port": 8083
+  "http.port": 8080,
+  "alarm.user": "1234",
+  "alarm.password": "1234",
+  "alarm.port": 80,
+  "alarm.durationInSec": 30
 }

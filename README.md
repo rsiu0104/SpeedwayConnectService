@@ -14,7 +14,7 @@ mvn clean package
 ## Run
 
 ```
-java -jar target\SpeedwayConnectService-1.0-SNAPSHOT.original.jar --cluster -Djava.net.preferIPv4Stack=true
+java -jar target\SpeedwayConnectService-1.0-SNAPSHOT.original.jar --cluster -Djava.net.preferIPv4Stack=true -conf src\conf\config.json
 ```
 ## Run with Debug
 
