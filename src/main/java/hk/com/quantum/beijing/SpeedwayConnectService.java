@@ -64,6 +64,8 @@ public class SpeedwayConnectService extends AbstractVerticle {
         });
     }
 
+
+
     private void TestHandler(RoutingContext routingContext) {
 
         routingContext.response()
@@ -236,18 +238,21 @@ public class SpeedwayConnectService extends AbstractVerticle {
 //                logger.info("Turn on alarm ("+ res.statusCode() + ").");
 //            });
 
-            client
-                    .get(config().getInteger("alarm.port", 80), hostname, "/rc.cgi?o=1," + AlarmDurationIn100ms)
-                    .putHeader(HttpHeaders.Names.AUTHORIZATION, "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes()))
-                    .send(ar -> {
-                        if (ar.succeeded()) {
-                            logger.info("Turn on alarm with status code (" + ar.result().statusCode() + ")");
-                        } else {
-                            logger.info("Failed to trigger alarm: Status Code: " + ar.result().statusCode() + ", Msg: " + ar.cause().getMessage());
-                        }
-                    });
-
-            //May not need to add additional response handling since it is not targeted for end-user.
+            if (hostname == null) {
+                logger.error("Alarm Box IP is null. Please check READER_NAME & ALARM_IP is set correctly in CS.");
+            } else {
+                client
+                        .get(config().getInteger("alarm.port", 80), hostname, "/rc.cgi?o=1," + AlarmDurationIn100ms)
+                        .putHeader(HttpHeaders.Names.AUTHORIZATION, "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes()))
+                        .send(ar -> {
+                            if (ar.succeeded()) {
+                                logger.info("Turn on alarm with status code (" + ar.result().statusCode() + ")");
+                            } else {
+                                logger.info("Failed to trigger alarm: Status Code: " + ar.result().statusCode() + ", Msg: " + ar.cause().getMessage());
+                            }
+                        });
+            }
+            //Alway going to return 200 to Impinj Reader.
             response.setStatusCode(200).end();
         }
     }
@@ -323,6 +328,7 @@ public class SpeedwayConnectService extends AbstractVerticle {
             JsonObject resultJson = new JsonObject();
             resultJson.put("NumOfUpdates", inventoryUpdateArray.size());
 
+
             routingContext.response()
                     .setStatusCode(200)
                     .putHeader("content-type", "application/json; charset=utf-8")
@@ -331,6 +337,10 @@ public class SpeedwayConnectService extends AbstractVerticle {
         } catch (Exception e) {
             logger.error("Error in HTTP Put. Exception : " + e);
             sendError(400, routingContext.response());
+
+            String JsonBody = routingContext.getBodyAsString("UTF-8");
+            logger.error("Missing Parameter: " + e.getMessage());
+            logger.debug("Request Body: " + JsonBody);
         }
     }
 
