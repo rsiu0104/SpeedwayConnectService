@@ -24,6 +24,7 @@ public class SpeedwayConnectService extends AbstractVerticle {
     private WebClient client;
     private String credentials;
     private HashMap<String, String> ReaderAlarmIPHashMap;
+    private JsonArray assetList;
     private static int AlarmDurationIn100ms;
 
     @Override
@@ -36,12 +37,18 @@ public class SpeedwayConnectService extends AbstractVerticle {
         credentials = String.format("%s:%s", config().getString("alarm.user"), config().getString("alarm.password"));
         client = WebClient.create(vertx);
 
+
+
         // API Endpoint that receives HTTP Post from Impinj Readers
         Router router = Router.router(vertx);
         router.route().handler(BodyHandler.create());
         router.post("/api/v1/reader/SpeedwayConnect/:location").handler(this::SWCHandler);
         router.post("/api/v1/reader/alert").handler(this::SWCAlertHandler);
         router.put("/api/v1/reader/TSL/:location").handler(this::TSLHandler);
+//        String url = "/api/entity?filter=true&type=$tAsset&attribute=$aLocation&operator=eq&value=All";
+        router.get("/api/entity").handler(this::GetAssetListHandler);
+        router.get("/api").handler(this::TestLoginHandler);
+        router.get("/api/currentuser").handler(this::TestLoginHandler);
         router.get("/api/v1/test").handler(this::TestHandler);
         vertx.createHttpServer().requestHandler(router::accept).listen(config().getInteger("http.port", 8083));
 
@@ -49,8 +56,8 @@ public class SpeedwayConnectService extends AbstractVerticle {
         EventBus eb = vertx.eventBus();
         MessageConsumer<JsonArray> consumer = eb.consumer("ReaderInfo");
         consumer.handler(message -> {
-            JsonArray body = new JsonArray(message.body().toString());
-            ReaderAlarmIPHashMap = getReaderAlarmIPHashMap(body);
+            assetList = new JsonArray(message.body().toString());
+            ReaderAlarmIPHashMap = getReaderAlarmIPHashMap(assetList);
             logger.info("ReaderInfo Eventbus: Received " + ReaderAlarmIPHashMap.size() + " record(s)");
             message.reply(ReaderAlarmIPHashMap.size());
         });
@@ -64,13 +71,24 @@ public class SpeedwayConnectService extends AbstractVerticle {
         });
     }
 
+    private void TestLoginHandler(RoutingContext routingContext) {
+        routingContext.response()
+                .putHeader("content-type", "application/json")
+                .end("{}");  //TODO: Should relay the login to CS.
+    }
 
+    private void GetAssetListHandler(RoutingContext routingContext) {
+        routingContext.response()
+                .putHeader("content-type", "application/json")
+                .end(assetList.toString());
+//                .setStatusCode((assetList.size() == 0) ? 500 : 200)
+//                .end((assetList.size() == 0) ? "{}" : assetList.toString());
+    }
 
     private void TestHandler(RoutingContext routingContext) {
-
         routingContext.response()
                 .putHeader("content-type", "text/plain")
-                .end("Hello World!");
+                .end("Hello World! Version 1.0");
         logger.info("Test Page Accessed.");
     }
 
@@ -108,12 +126,12 @@ public class SpeedwayConnectService extends AbstractVerticle {
             sendError(400, response);
             logger.debug("reader_name is null");
         } else {
-            logger.debug("reader_name is " + reader_name);
-            logger.debug("mac_address is " + mac_address);
-            logger.debug("line_ending is " + line_ending);
-            logger.debug("field_delim is " + field_delim);
-            logger.debug("field_names is " + field_names);
-            logger.debug("field_values is " + field_values);
+            logger.trace("reader_name is " + reader_name);
+            logger.trace("mac_address is " + mac_address);
+            logger.trace("line_ending is " + line_ending);
+            logger.trace("field_delim is " + field_delim);
+            logger.trace("field_names is " + field_names);
+            logger.trace("field_values is " + field_values);
 
             /*
             1. Look-up reader for its location
@@ -176,8 +194,7 @@ public class SpeedwayConnectService extends AbstractVerticle {
 
             // Once going through all the updates, put the update JsonArray into the update JsonObject for Eventbus.
             inventoryUpdates.put("updates", inventoryUpdateArray);
-
-            logger.debug(inventoryUpdates.encodePrettily());
+            logger.debug(inventoryUpdates.encode());
 
             // Sends the inventory inventoryUpdateArray on the event bus.
             vertx.eventBus().send("Inventory", inventoryUpdates, ar -> {
@@ -312,7 +329,7 @@ public class SpeedwayConnectService extends AbstractVerticle {
             inventoryUpdates.put("user_name", user_name);
             inventoryUpdates.put("updates", inventoryUpdateArray);
 
-            logger.debug(inventoryUpdates.encodePrettily());
+            logger.debug(inventoryUpdates.encode());
 
             // Sends the inventory inventoryUpdateArray on the event bus.
             vertx.eventBus().send("Inventory", inventoryUpdates, ar -> {

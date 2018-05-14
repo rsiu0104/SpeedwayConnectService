@@ -1,5 +1,5 @@
 {
-  "http.port": 8080,
+  "http.port": 8081,
   "alarm.user": "1234",
   "alarm.password": "1234",
   "alarm.port": 80,
